@@ -76,6 +76,57 @@ app.post('/api/records', async (req, res) => {
   }
 });
 
+// Lab 2: identical vulnerable INSERT, but the response returns *all*
+// result sets from pool.query. When using the simple-query protocol
+// (text-only query, no parameters), node-postgres returns an array of
+// QueryResult objects when multiple statements were executed, instead
+// of just the last one. That makes stacked-query injection actually
+// leak data via the response body, e.g.:
+//
+//   comment: '); SELECT version() --
+//
+// produces two result sets: the original INSERT and a SELECT whose
+// rows contain the server version.
+app.post('/api/lab2/records', async (req, res) => {
+  const { username, email, comment } = req.body || {};
+
+  if (typeof username !== 'string' || typeof email !== 'string' || typeof comment !== 'string') {
+    return res.status(400).json({ error: 'username, email, and comment are required' });
+  }
+
+  const sql =
+    "INSERT INTO records (username, email, comment) VALUES ('" +
+    username +
+    "', '" +
+    email +
+    "', '" +
+    comment +
+    "') RETURNING id, username, email, comment, created_at";
+
+  try {
+    const raw = await pool.query(sql);
+    const sets = Array.isArray(raw) ? raw : [raw];
+    const resultSets = sets.map((r) => ({
+      command: r.command,
+      rowCount: r.rowCount,
+      fields: (r.fields || []).map((f) => f.name),
+      rows: r.rows,
+    }));
+    res.json({ ok: true, resultSets, executedSql: sql });
+  } catch (err) {
+    if (verboseErrors) {
+      return res.status(500).json({
+        ok: false,
+        error: err.message,
+        detail: err.detail || null,
+        position: err.position || null,
+        executedSql: sql,
+      });
+    }
+    res.status(500).json({ ok: false, error: `ERROR: ${err.message}` });
+  }
+});
+
 app.get('/api/records', async (_req, res) => {
   try {
     const result = await pool.query(

