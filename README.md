@@ -13,16 +13,18 @@ which executes:
 
 ```sql
 INSERT INTO records (username, email, comment)
-VALUES ($1, $2, '<comment goes here unescaped>')
+VALUES ('<username>', '<email>', '<comment>')
 RETURNING ...;
 ```
 
-`username` and `email` are bound as parameters and are safe. The third
-value (`comment`) is concatenated directly into the SQL string, which is
-the **injection point**. When the resulting SQL is syntactically broken,
-the PostgreSQL error message is returned to the browser and rendered in
-the result panel — that is the visible error oracle for error-based
-SQLi.
+All three values are concatenated directly into the SQL string with no
+escaping or parameter binding, so **every field is a SQL injection
+sink**. The `comment` field is the canonical demo target because it is
+the last value in the INSERT (no trailing single-quote / closing paren
+to balance), but `username` and `email` are equally exploitable. When
+the resulting SQL is syntactically broken, the PostgreSQL error message
+is returned to the browser and rendered in the result panel — that is
+the visible error oracle for error-based SQLi.
 
 ## Run it
 
@@ -45,19 +47,19 @@ PGUSER=postgres PGPASSWORD=postgres PGDATABASE=vulnerable_app npm start
 
 ## Try the injection
 
-The vulnerable parameter is the `comment` field. A few payloads to try:
+All three fields are vulnerable. A few payloads to try:
 
-- Break the syntax to trigger an error:
-  - `comment`: `'`  →  PostgreSQL responds with `unterminated quoted string ...`.
-- Cast-error oracle (leak data via a type error):
+- Break the syntax (any field) to trigger an error:
+  - value: `'`  →  PostgreSQL responds with `unterminated quoted string ...`.
+- Comment-out the rest of the statement (`username` or `email`):
+  - `username`: `x', '', '') --`  →  closes the INSERT and ignores the rest.
+- Cast-error oracle to leak data via a type error (any field):
   - `comment`:
     ```
     ') , (CAST((SELECT value FROM secrets WHERE name='flag') AS int), '', '
     ```
     (Adjust to fit; the point is to leak `secrets.value` inside an error
     message such as `invalid input syntax for type integer: "CTF{...}"`.)
-- Comment-out the rest of the statement:
-  - `comment`: `') --`
 
 The error JSON returned by the server includes `error`, `detail`,
 `position`, and the `executedSql` so you can see exactly what was sent

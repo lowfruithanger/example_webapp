@@ -27,16 +27,21 @@ app.post('/api/records', async (req, res) => {
     return res.status(400).json({ error: 'username, email, and comment are required' });
   }
 
-  // username and email are bound safely with parameters.
-  // comment is concatenated directly into the SQL string -- this is the
-  // intentional injection point (third parameter of the INSERT).
+  // All three values are concatenated directly into the SQL string with
+  // no escaping or parameter binding -- every field is a SQL injection
+  // sink. The comment field is still the canonical demo target because
+  // it is the last value in the INSERT, but username and email work too.
   const sql =
-    "INSERT INTO records (username, email, comment) VALUES ($1, $2, '" +
+    "INSERT INTO records (username, email, comment) VALUES ('" +
+    username +
+    "', '" +
+    email +
+    "', '" +
     comment +
     "') RETURNING id, username, email, comment, created_at";
 
   try {
-    const result = await pool.query(sql, [username, email]);
+    const result = await pool.query(sql);
     res.json({ ok: true, row: result.rows[0], executedSql: sql });
   } catch (err) {
     // Leak the database error verbatim so the injection is "error-based".
