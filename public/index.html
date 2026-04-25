@@ -98,8 +98,24 @@
       <h1>Records Demo</h1>
       <div class="warning">
         <strong>Educational only.</strong> This app is intentionally vulnerable to
-        error-based SQL injection on the <em>comment</em> field. Do not expose it
-        to the internet.
+        error-based SQL injection on <em>all three</em> fields. Do not expose
+        it to the internet.
+      </div>
+
+      <div class="panel" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;">
+        <div>
+          <strong>Verbose error responses</strong>
+          <div class="muted" style="margin-top:0.25rem;">
+            On: server returns the full Postgres error JSON (<code>error</code>,
+            <code>detail</code>, <code>position</code>, <code>executedSql</code>).
+            Off: server returns only a generic 500 with a short
+            <code>ERROR: &lt;message&gt;</code> string.
+          </div>
+        </div>
+        <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;white-space:nowrap;">
+          <input type="checkbox" id="verbose-toggle" />
+          <span id="verbose-state">…</span>
+        </label>
       </div>
 
       <form id="record-form">
@@ -144,6 +160,39 @@
       const result = document.getElementById('result');
       const tbody = document.querySelector('#records-table tbody');
       const refreshBtn = document.getElementById('refresh');
+      const verboseToggle = document.getElementById('verbose-toggle');
+      const verboseState = document.getElementById('verbose-state');
+
+      function paintVerbose(enabled) {
+        verboseToggle.checked = !!enabled;
+        verboseState.textContent = enabled ? 'On' : 'Off';
+      }
+
+      async function loadSettings() {
+        try {
+          const res = await fetch('/api/settings');
+          const data = await res.json();
+          paintVerbose(data.verboseErrors);
+        } catch (err) {
+          console.error(err);
+        }
+      }
+
+      verboseToggle.addEventListener('change', async () => {
+        const desired = verboseToggle.checked;
+        try {
+          const res = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ verboseErrors: desired }),
+          });
+          const data = await res.json();
+          paintVerbose(data.verboseErrors);
+        } catch (err) {
+          paintVerbose(!desired);
+          showResult({ error: String(err) }, false);
+        }
+      });
 
       function showResult(payload, ok) {
         result.hidden = false;
@@ -192,6 +241,7 @@
       });
 
       refreshBtn.addEventListener('click', loadRecords);
+      loadSettings();
       loadRecords();
     </script>
   </body>
