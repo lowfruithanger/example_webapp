@@ -91,6 +91,33 @@
       th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
       th { color: var(--muted); font-weight: 600; }
       code { background: #0b1220; padding: 0 0.25rem; border-radius: 4px; }
+
+      .tabs {
+        display: flex;
+        gap: 0.25rem;
+        margin-bottom: 1rem;
+        border-bottom: 1px solid var(--border);
+      }
+      .tab {
+        background: transparent;
+        color: var(--muted);
+        border: 0;
+        border-bottom: 2px solid transparent;
+        padding: 0.6rem 1rem;
+        cursor: pointer;
+        font-weight: 600;
+        border-radius: 0;
+        font-size: 0.95rem;
+      }
+      .tab[aria-selected="true"] {
+        color: var(--text);
+        border-bottom-color: var(--accent);
+      }
+      .lab-intro {
+        font-size: 0.9rem;
+        color: var(--muted);
+        margin-bottom: 1rem;
+      }
     </style>
   </head>
   <body>
@@ -98,8 +125,8 @@
       <h1>Records Demo</h1>
       <div class="warning">
         <strong>Educational only.</strong> This app is intentionally vulnerable to
-        error-based SQL injection on <em>all three</em> fields. Do not expose
-        it to the internet.
+        SQL injection on <em>all three</em> fields in both labs. Do not expose it
+        to the internet.
       </div>
 
       <div class="panel" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;">
@@ -118,23 +145,62 @@
         </label>
       </div>
 
-      <form id="record-form">
-        <div class="field">
-          <label for="username">Username (vulnerable, concatenated)</label>
-          <input id="username" name="username" required autocomplete="off" />
-        </div>
-        <div class="field">
-          <label for="email">Email (vulnerable, concatenated)</label>
-          <input id="email" name="email" required autocomplete="off" />
-        </div>
-        <div class="field">
-          <label for="comment">Comment (vulnerable, concatenated)</label>
-          <input id="comment" name="comment" required autocomplete="off" />
-        </div>
-        <button type="submit">Create record</button>
-      </form>
+      <div class="tabs" role="tablist">
+        <button class="tab" type="button" role="tab" id="tab-1" aria-selected="true" aria-controls="lab-1">Lab 1 · Error-based</button>
+        <button class="tab" type="button" role="tab" id="tab-2" aria-selected="false" aria-controls="lab-2">Lab 2 · Stacked queries</button>
+      </div>
 
-      <div id="result" class="result" hidden></div>
+      <section id="lab-1" role="tabpanel" aria-labelledby="tab-1">
+        <div class="lab-intro">
+          Endpoint <code>POST /api/records</code>. Returns only the last result
+          set from <code>pool.query</code>, so injection has to leak data
+          through Postgres error messages (cast errors, etc.).
+        </div>
+
+        <form id="lab1-form">
+          <div class="field">
+            <label for="lab1-username">Username (vulnerable, concatenated)</label>
+            <input id="lab1-username" required autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="lab1-email">Email (vulnerable, concatenated)</label>
+            <input id="lab1-email" required autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="lab1-comment">Comment (vulnerable, concatenated)</label>
+            <input id="lab1-comment" required autocomplete="off" />
+          </div>
+          <button type="submit">Create record</button>
+        </form>
+        <div id="lab1-result" class="result" hidden></div>
+      </section>
+
+      <section id="lab-2" role="tabpanel" aria-labelledby="tab-2" hidden>
+        <div class="lab-intro">
+          Endpoint <code>POST /api/lab2/records</code>. Same vulnerable INSERT,
+          but the response includes <em>every</em> result set returned by the
+          simple-query protocol. Stacked queries leak data directly:
+          <code>'); SELECT version() --</code> in any field returns a second
+          result set whose rows contain the server version.
+        </div>
+
+        <form id="lab2-form">
+          <div class="field">
+            <label for="lab2-username">Username (vulnerable, concatenated)</label>
+            <input id="lab2-username" required autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="lab2-email">Email (vulnerable, concatenated)</label>
+            <input id="lab2-email" required autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="lab2-comment">Comment (vulnerable, concatenated)</label>
+            <input id="lab2-comment" required autocomplete="off" />
+          </div>
+          <button type="submit">Create record</button>
+        </form>
+        <div id="lab2-result" class="result" hidden></div>
+      </section>
 
       <div class="panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
@@ -142,7 +208,7 @@
           <button type="button" id="refresh" style="background:#1f2937;color:var(--text);">Refresh</button>
         </div>
         <div class="muted" style="margin-bottom:0.75rem;">
-          Latest 20 rows from the <code>records</code> table.
+          Latest 20 rows from the <code>records</code> table (shared by both labs).
         </div>
         <table id="records-table">
           <thead>
@@ -156,12 +222,31 @@
     </main>
 
     <script>
-      const form = document.getElementById('record-form');
-      const result = document.getElementById('result');
       const tbody = document.querySelector('#records-table tbody');
       const refreshBtn = document.getElementById('refresh');
       const verboseToggle = document.getElementById('verbose-toggle');
       const verboseState = document.getElementById('verbose-state');
+
+      // Tab switching
+      const tabs = [
+        { btn: document.getElementById('tab-1'), panel: document.getElementById('lab-1') },
+        { btn: document.getElementById('tab-2'), panel: document.getElementById('lab-2') },
+      ];
+      tabs.forEach((t, i) => {
+        t.btn.addEventListener('click', () => {
+          tabs.forEach((other, j) => {
+            other.btn.setAttribute('aria-selected', String(i === j));
+            other.panel.hidden = i !== j;
+          });
+        });
+      });
+
+      function showResult(elId, payload, ok) {
+        const el = document.getElementById(elId);
+        el.hidden = false;
+        el.className = 'result ' + (ok ? 'ok' : 'error');
+        el.textContent = JSON.stringify(payload, null, 2);
+      }
 
       function paintVerbose(enabled) {
         verboseToggle.checked = !!enabled;
@@ -190,15 +275,9 @@
           paintVerbose(data.verboseErrors);
         } catch (err) {
           paintVerbose(!desired);
-          showResult({ error: String(err) }, false);
+          console.error(err);
         }
       });
-
-      function showResult(payload, ok) {
-        result.hidden = false;
-        result.className = 'result ' + (ok ? 'ok' : 'error');
-        result.textContent = JSON.stringify(payload, null, 2);
-      }
 
       async function loadRecords() {
         try {
@@ -219,26 +298,32 @@
         }
       }
 
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const body = {
-          username: document.getElementById('username').value,
-          email: document.getElementById('email').value,
-          comment: document.getElementById('comment').value,
-        };
-        try {
-          const res = await fetch('/api/records', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          });
-          const data = await res.json();
-          showResult(data, res.ok && data.ok);
-          if (res.ok) loadRecords();
-        } catch (err) {
-          showResult({ error: String(err) }, false);
-        }
-      });
+      function bindLab(formId, resultId, endpoint, prefix) {
+        const form = document.getElementById(formId);
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const body = {
+            username: document.getElementById(prefix + '-username').value,
+            email: document.getElementById(prefix + '-email').value,
+            comment: document.getElementById(prefix + '-comment').value,
+          };
+          try {
+            const res = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            });
+            const data = await res.json();
+            showResult(resultId, data, res.ok && data.ok);
+            if (res.ok) loadRecords();
+          } catch (err) {
+            showResult(resultId, { error: String(err) }, false);
+          }
+        });
+      }
+
+      bindLab('lab1-form', 'lab1-result', '/api/records', 'lab1');
+      bindLab('lab2-form', 'lab2-result', '/api/lab2/records', 'lab2');
 
       refreshBtn.addEventListener('click', loadRecords);
       loadSettings();
