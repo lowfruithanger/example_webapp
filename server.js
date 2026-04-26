@@ -90,13 +90,7 @@ app.post('/api/records', async (req, res) => {
 //
 // Result sets from successfully-executed statements are still returned
 // in `resultSets`, so non-erroring stacked SELECTs leak via the body.
-app.post('/api/lab2/records', async (req, res) => {
-  const { username, email, comment } = req.body || {};
-
-  if (typeof username !== 'string' || typeof email !== 'string' || typeof comment !== 'string') {
-    return res.status(400).json({ error: 'username, email, and comment are required' });
-  }
-
+async function runSplitStackedInsert({ username, email, comment }) {
   const sql =
     "INSERT INTO records (username, email, comment) VALUES ('" +
     username +
@@ -135,36 +129,82 @@ app.post('/api/lab2/records', async (req, res) => {
         if (/unterminated/i.test(err.message)) {
           generic = 'ERROR: unterminated quoted string';
         }
-        return res.status(500).json({
-          ok: false,
-          statementIndex: i,
-          error: generic,
-          resultSets,
-        });
+        return {
+          status: 500,
+          body: { ok: false, statementIndex: i, error: generic, resultSets },
+        };
       }
       // Stacked statements: full Postgres error, so cast-error oracles
       // leak the value being cast.
       if (verboseErrors) {
-        return res.status(500).json({
+        return {
+          status: 500,
+          body: {
+            ok: false,
+            statementIndex: i,
+            error: err.message,
+            detail: err.detail || null,
+            position: err.position || null,
+            executedSql: stmt,
+            resultSets,
+          },
+        };
+      }
+      return {
+        status: 500,
+        body: {
           ok: false,
           statementIndex: i,
-          error: err.message,
-          detail: err.detail || null,
-          position: err.position || null,
-          executedSql: stmt,
+          error: `ERROR: ${err.message}`,
           resultSets,
-        });
-      }
-      return res.status(500).json({
-        ok: false,
-        statementIndex: i,
-        error: `ERROR: ${err.message}`,
-        resultSets,
-      });
+        },
+      };
     }
   }
 
-  res.json({ ok: true, resultSets, executedSql: sql });
+  return { status: 200, body: { ok: true, resultSets, executedSql: sql } };
+}
+
+app.post('/api/lab2/records', async (req, res) => {
+  const { username, email, comment } = req.body || {};
+
+  if (typeof username !== 'string' || typeof email !== 'string' || typeof comment !== 'string') {
+    return res.status(400).json({ error: 'username, email, and comment are required' });
+  }
+
+  const { status, body } = await runSplitStackedInsert({ username, email, comment });
+  res.status(status).json(body);
+});
+
+// Lab 3: same behaviour as Lab 2 (statement-split, sanitized INSERT
+// errors, verbose stacked-statement errors), but every literal space
+// character is stripped from each field before concatenation. Classic
+// payloads like `' OR 1=1 --` collapse into `'OR1=1--` and break, so
+// the attacker has to construct whitespace using non-space tokens:
+//
+//   - tab characters (`\t`)
+//   - newline characters (`\n`, `\r`)
+//   - block comments (`/**/`)
+//   - parenthesised expressions where syntactically allowed
+//
+// Other whitespace forms are left intact -- only the literal U+0020
+// space is filtered.
+app.post('/api/lab3/records', async (req, res) => {
+  const { username, email, comment } = req.body || {};
+
+  if (typeof username !== 'string' || typeof email !== 'string' || typeof comment !== 'string') {
+    return res.status(400).json({ error: 'username, email, and comment are required' });
+  }
+
+  const stripSpaces = (s) => s.replace(/ /g, '');
+  const filtered = {
+    username: stripSpaces(username),
+    email: stripSpaces(email),
+    comment: stripSpaces(comment),
+  };
+
+  const { status, body } = await runSplitStackedInsert(filtered);
+  res.status(status).json({ ...body, filteredValues: filtered });
 });
 
 app.get('/api/records', async (_req, res) => {
