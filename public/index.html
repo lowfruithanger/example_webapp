@@ -148,6 +148,7 @@
       <div class="tabs" role="tablist">
         <button class="tab" type="button" role="tab" id="tab-1" aria-selected="true" aria-controls="lab-1">Lab 1 · Error-based</button>
         <button class="tab" type="button" role="tab" id="tab-2" aria-selected="false" aria-controls="lab-2">Lab 2 · Stacked queries</button>
+        <button class="tab" type="button" role="tab" id="tab-3" aria-selected="false" aria-controls="lab-3">Lab 3 · Stacked + space filter</button>
       </div>
 
       <section id="lab-1" role="tabpanel" aria-labelledby="tab-1">
@@ -207,6 +208,36 @@
         <div id="lab2-result" class="result" hidden></div>
       </section>
 
+      <section id="lab-3" role="tabpanel" aria-labelledby="tab-3" hidden>
+        <div class="lab-intro">
+          Endpoint <code>POST /api/lab3/records</code>. Same as Lab 2 (statement
+          split, sanitized INSERT errors, verbose stacked-statement errors), but
+          every literal space character is stripped from each field <em>before</em>
+          concatenation. <code>' OR 1=1 --</code> collapses to <code>'OR1=1--</code>
+          and breaks. Use non-space whitespace tokens instead:
+          <code>\t</code> / <code>\n</code> / <code>/**/</code>. The response
+          echoes back a <code>filteredValues</code> object so you can confirm
+          what actually reached the SQL.
+        </div>
+
+        <form id="lab3-form">
+          <div class="field">
+            <label for="lab3-username">Username (spaces stripped, then concatenated)</label>
+            <input id="lab3-username" required autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="lab3-email">Email (spaces stripped, then concatenated)</label>
+            <input id="lab3-email" required autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="lab3-comment">Comment (spaces stripped, then concatenated)</label>
+            <input id="lab3-comment" required autocomplete="off" />
+          </div>
+          <button type="submit">Create record</button>
+        </form>
+        <div id="lab3-result" class="result" hidden></div>
+      </section>
+
       <div class="panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
           <strong>Recent records</strong>
@@ -236,6 +267,7 @@
       const tabs = [
         { btn: document.getElementById('tab-1'), panel: document.getElementById('lab-1') },
         { btn: document.getElementById('tab-2'), panel: document.getElementById('lab-2') },
+        { btn: document.getElementById('tab-3'), panel: document.getElementById('lab-3') },
       ];
       tabs.forEach((t, i) => {
         t.btn.addEventListener('click', () => {
@@ -329,6 +361,7 @@
 
       bindLab('lab1-form', 'lab1-result', '/api/records', 'lab1');
       bindLab('lab2-form', 'lab2-result', '/api/lab2/records', 'lab2');
+      bindLab('lab3-form', 'lab3-result', '/api/lab3/records', 'lab3');
 
       refreshBtn.addEventListener('click', loadRecords);
       loadSettings();
