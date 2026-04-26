@@ -76,17 +76,20 @@ app.post('/api/records', async (req, res) => {
   }
 });
 
-// Lab 2: identical vulnerable INSERT, but the response returns *all*
-// result sets from pool.query. When using the simple-query protocol
-// (text-only query, no parameters), node-postgres returns an array of
-// QueryResult objects when multiple statements were executed, instead
-// of just the last one. That makes stacked-query injection actually
-// leak data via the response body, e.g.:
+// Lab 2: identical vulnerable INSERT, but the server splits the
+// resulting SQL on `;` and runs each statement separately.
 //
-//   comment: '); SELECT version() --
+// - Statement 0 (the original INSERT, including any in-place injection)
+//   has its errors collapsed to a generic "syntax error" /
+//   "unterminated quoted string" message. Cast-error oracles inside
+//   the INSERT body therefore do NOT leak data.
+// - Statements 1+ (anything the attacker stacked after a `;`) are
+//   executed with the raw Postgres error returned verbatim, so a
+//   payload like `'); SELECT CAST(version() AS int) --` leaks the
+//   cast value through the error message.
 //
-// produces two result sets: the original INSERT and a SELECT whose
-// rows contain the server version.
+// Result sets from successfully-executed statements are still returned
+// in `resultSets`, so non-erroring stacked SELECTs leak via the body.
 app.post('/api/lab2/records', async (req, res) => {
   const { username, email, comment } = req.body || {};
 
@@ -103,28 +106,65 @@ app.post('/api/lab2/records', async (req, res) => {
     comment +
     "') RETURNING id, username, email, comment, created_at";
 
-  try {
-    const raw = await pool.query(sql);
-    const sets = Array.isArray(raw) ? raw : [raw];
-    const resultSets = sets.map((r) => ({
-      command: r.command,
-      rowCount: r.rowCount,
-      fields: (r.fields || []).map((f) => f.name),
-      rows: r.rows,
-    }));
-    res.json({ ok: true, resultSets, executedSql: sql });
-  } catch (err) {
-    if (verboseErrors) {
+  // Naive split -- a `;` inside a string literal would be misclassified,
+  // but for this demo any `;` reaching this point came from user input
+  // and is the exact thing we want to treat as a stacked-query boundary.
+  const statements = sql
+    .split(';')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+  const resultSets = [];
+
+  for (let i = 0; i < statements.length; i++) {
+    const stmt = statements[i];
+    try {
+      const r = await pool.query(stmt);
+      resultSets.push({
+        statementIndex: i,
+        command: r.command,
+        rowCount: r.rowCount,
+        fields: (r.fields || []).map((f) => f.name),
+        rows: r.rows,
+      });
+    } catch (err) {
+      if (i === 0) {
+        // Sanitize errors from the original INSERT to a generic message
+        // so error-based payloads inside the INSERT body cannot leak.
+        let generic = 'ERROR: syntax error';
+        if (/unterminated/i.test(err.message)) {
+          generic = 'ERROR: unterminated quoted string';
+        }
+        return res.status(500).json({
+          ok: false,
+          statementIndex: i,
+          error: generic,
+          resultSets,
+        });
+      }
+      // Stacked statements: full Postgres error, so cast-error oracles
+      // leak the value being cast.
+      if (verboseErrors) {
+        return res.status(500).json({
+          ok: false,
+          statementIndex: i,
+          error: err.message,
+          detail: err.detail || null,
+          position: err.position || null,
+          executedSql: stmt,
+          resultSets,
+        });
+      }
       return res.status(500).json({
         ok: false,
-        error: err.message,
-        detail: err.detail || null,
-        position: err.position || null,
-        executedSql: sql,
+        statementIndex: i,
+        error: `ERROR: ${err.message}`,
+        resultSets,
       });
     }
-    res.status(500).json({ ok: false, error: `ERROR: ${err.message}` });
   }
+
+  res.json({ ok: true, resultSets, executedSql: sql });
 });
 
 app.get('/api/records', async (_req, res) => {

