@@ -178,10 +178,15 @@
       <section id="lab-2" role="tabpanel" aria-labelledby="tab-2" hidden>
         <div class="lab-intro">
           Endpoint <code>POST /api/lab2/records</code>. Same vulnerable INSERT,
-          but the response includes <em>every</em> result set returned by the
-          simple-query protocol. Stacked queries leak data directly:
-          <code>'); SELECT version() --</code> in any field returns a second
-          result set whose rows contain the server version.
+          but the server splits the SQL on <code>;</code> and runs each
+          statement separately. Errors from the original INSERT are collapsed
+          to a generic <code>syntax error</code> / <code>unterminated quoted
+          string</code> — error-based payloads inside the INSERT body do
+          <em>not</em> leak. Errors from <em>stacked</em> statements (anything
+          after a <code>;</code>) are returned verbatim, so a payload like
+          <code>'); SELECT CAST(version() AS int) --</code> leaks the cast
+          value through the error message. Successful stacked SELECTs still
+          appear in <code>resultSets</code>.
         </div>
 
         <form id="lab2-form">
