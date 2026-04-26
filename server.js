@@ -129,10 +129,13 @@ async function runSplitStackedInsert({ username, email, comment }) {
         if (/unterminated/i.test(err.message)) {
           generic = 'ERROR: unterminated quoted string';
         }
-        return {
-          status: 500,
-          body: { ok: false, statementIndex: i, error: generic, resultSets },
-        };
+        if (verboseErrors) {
+          return {
+            status: 500,
+            body: { ok: false, statementIndex: i, error: generic, resultSets },
+          };
+        }
+        return { status: 500, body: { ok: false, error: generic } };
       }
       // Stacked statements: full Postgres error, so cast-error oracles
       // leak the value being cast.
@@ -152,12 +155,7 @@ async function runSplitStackedInsert({ username, email, comment }) {
       }
       return {
         status: 500,
-        body: {
-          ok: false,
-          statementIndex: i,
-          error: `ERROR: ${err.message}`,
-          resultSets,
-        },
+        body: { ok: false, error: `ERROR: ${err.message}` },
       };
     }
   }
@@ -204,7 +202,11 @@ app.post('/api/lab3/records', async (req, res) => {
   };
 
   const { status, body } = await runSplitStackedInsert(filtered);
-  res.status(status).json({ ...body, filteredValues: filtered });
+  // filteredValues is an educational hint: only attach it when the
+  // verbose-errors toggle is on, so off-mode responses match Lab 1's
+  // minimal shape.
+  const responseBody = verboseErrors ? { ...body, filteredValues: filtered } : body;
+  res.status(status).json(responseBody);
 });
 
 app.get('/api/records', async (_req, res) => {
