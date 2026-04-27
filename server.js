@@ -3,12 +3,28 @@
 // it on a public network or use any of this code in production.
 
 const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const { Pool } = require('pg');
 const { exec } = require('child_process');
 
 const app = express();
 const port = process.env.PORT || 3000;
+const requestedCmdiShell = process.env.CMDI_SHELL || undefined;
+
+function resolveShell(shellPath) {
+  if (!shellPath) return undefined;
+  if (fs.existsSync(shellPath)) return shellPath;
+
+  const name = path.basename(shellPath);
+  const candidates = [`/bin/${name}`, `/usr/bin/${name}`];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return shellPath;
+}
+
+const cmdiShell = resolveShell(requestedCmdiShell);
 
 const pool = new Pool({
   host: process.env.PGHOST || 'localhost',

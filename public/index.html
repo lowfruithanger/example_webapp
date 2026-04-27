@@ -462,6 +462,17 @@
         }
       }
 
+      async function loadCmdiSettings() {
+        try {
+          const res = await fetch('/api/cmdi/settings');
+          const data = await res.json();
+          document.getElementById('cmdi-shell').textContent = data.shell || 'system default';
+        } catch (err) {
+          document.getElementById('cmdi-shell').textContent = 'unknown';
+          console.error(err);
+        }
+      }
+
       verboseToggle.addEventListener('change', async () => {
         const desired = verboseToggle.checked;
         try {
@@ -550,6 +561,7 @@
 
       refreshBtn.addEventListener('click', loadRecords);
       loadSettings();
+      loadCmdiSettings();
       loadRecords();
     </script>
   </body>
