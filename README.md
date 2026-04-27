@@ -7,7 +7,7 @@ An **intentionally vulnerable** demo web application that showcases
 
 ## What it does
 
-The app exposes three labs, all backed by the same vulnerable INSERT:
+The app exposes four labs, all backed by the same vulnerable INSERT:
 
 ```sql
 INSERT INTO records (username, email, comment)
@@ -29,6 +29,12 @@ escaping or parameter binding, so every field is a SQL injection sink.
   Same as Lab 2, but every literal space character is stripped from
   each field before concatenation. Payloads must use non-space
   whitespace tokens (`\t`, `\n`, `/**/`) to remain valid SQL.
+- **Lab 4 — + SELECT/UNION filter** (`POST /api/lab4/records`). Same as
+  Lab 3, plus the case-insensitive substrings `SELECT` and `UNION` are
+  stripped from each field before concatenation. The classic
+  `SELECT … FROM` and `UNION SELECT` patterns die. Bypass with PostgreSQL
+  features that don't need those keywords: `TABLE foo` (alias for
+  `SELECT * FROM foo`) and top-level `VALUES (...)`.
 
 A "Verbose error responses" toggle at the top of the page controls
 whether DB errors come back as the full Postgres JSON
@@ -115,9 +121,30 @@ Tip: in the browser form you can also paste real tab/newline characters
 between SQL keywords; both survive the filter and are valid Postgres
 whitespace.
 
+### Lab 4 — Stacked + space + SELECT/UNION filter
+Builds on Lab 3 by additionally stripping the case-insensitive
+substrings `SELECT` and `UNION` from each field before concatenation.
+Lab 3 payloads above all reference `SELECT` and stop working. Use
+PostgreSQL constructs that don't need either keyword:
+
+- Read all secrets via `TABLE` shorthand:
+  `');TABLE/**/secrets--`
+  → leaked rows appear in `resultSets[1].rows`.
+- Cast-error leak via top-level `VALUES`:
+  `');VALUES(CAST(version()AS/**/int))--`
+  → response `error`: `invalid input syntax for type integer: "PostgreSQL 16..."`.
+- Cast-error leak of the seeded flag (no `SELECT`, all-rows fallback):
+  `');VALUES(CAST((TABLE/**/secrets)AS/**/int))--`
+  (subquery returns multiple columns/rows; the resulting Postgres error
+  message still surfaces context useful for further exfiltration.)
+
+The `filteredValues` echo in the response (when verbose is on) is
+useful here for confirming what the server actually concatenated after
+both filter passes.
+
 ## Files
 
-- `server.js` — Express backend. Vulnerable endpoints: `POST /api/records` (Lab 1, single result set), `POST /api/lab2/records` (Lab 2, statement split), `POST /api/lab3/records` (Lab 3, statement split + space-stripped inputs). Settings: `GET/POST /api/settings`.
-- `public/index.html` — Tabbed frontend (Labs 1/2/3) with the verbose-errors toggle.
+- `server.js` — Express backend. Vulnerable endpoints: `POST /api/records` (Lab 1, single result set), `POST /api/lab2/records` (Lab 2, statement split), `POST /api/lab3/records` (Lab 3, + space-stripped inputs), `POST /api/lab4/records` (Lab 4, + SELECT/UNION-stripped inputs). Settings: `GET/POST /api/settings`.
+- `public/index.html` — Tabbed frontend (Labs 1/2/3/4) with the verbose-errors toggle.
 - `db/init.sql` — Schema + a `secrets` table to make exfiltration demos meaningful.
 - `docker-compose.yml` — Postgres 16 + Node 20 dev stack.

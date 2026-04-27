@@ -149,6 +149,7 @@
         <button class="tab" type="button" role="tab" id="tab-1" aria-selected="true" aria-controls="lab-1">Lab 1 · Error-based</button>
         <button class="tab" type="button" role="tab" id="tab-2" aria-selected="false" aria-controls="lab-2">Lab 2 · Stacked queries</button>
         <button class="tab" type="button" role="tab" id="tab-3" aria-selected="false" aria-controls="lab-3">Lab 3 · Stacked + space filter</button>
+        <button class="tab" type="button" role="tab" id="tab-4" aria-selected="false" aria-controls="lab-4">Lab 4 · + SELECT/UNION filter</button>
       </div>
 
       <section id="lab-1" role="tabpanel" aria-labelledby="tab-1">
@@ -238,6 +239,38 @@
         <div id="lab3-result" class="result" hidden></div>
       </section>
 
+      <section id="lab-4" role="tabpanel" aria-labelledby="tab-4" hidden>
+        <div class="lab-intro">
+          Endpoint <code>POST /api/lab4/records</code>. Same as Lab 3, plus a
+          case-insensitive <code>SELECT</code> and <code>UNION</code> denylist:
+          both substrings are stripped from each field before concatenation.
+          The classic <code>SELECT … FROM</code> and <code>UNION SELECT</code>
+          patterns die. Bypass with PostgreSQL features that don't need those
+          keywords:
+          <ul style="margin:0.5rem 0 0 1.25rem; padding:0;">
+            <li><code>TABLE foo</code> — shorthand for <code>SELECT * FROM foo</code>.</li>
+            <li><code>VALUES (expr, …)</code> — top-level expression rows.</li>
+          </ul>
+        </div>
+
+        <form id="lab4-form">
+          <div class="field">
+            <label for="lab4-username">Username (spaces + SELECT/UNION stripped)</label>
+            <input id="lab4-username" required autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="lab4-email">Email (spaces + SELECT/UNION stripped)</label>
+            <input id="lab4-email" required autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="lab4-comment">Comment (spaces + SELECT/UNION stripped)</label>
+            <input id="lab4-comment" required autocomplete="off" />
+          </div>
+          <button type="submit">Create record</button>
+        </form>
+        <div id="lab4-result" class="result" hidden></div>
+      </section>
+
       <div class="panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
           <strong>Recent records</strong>
@@ -268,6 +301,7 @@
         { btn: document.getElementById('tab-1'), panel: document.getElementById('lab-1') },
         { btn: document.getElementById('tab-2'), panel: document.getElementById('lab-2') },
         { btn: document.getElementById('tab-3'), panel: document.getElementById('lab-3') },
+        { btn: document.getElementById('tab-4'), panel: document.getElementById('lab-4') },
       ];
       tabs.forEach((t, i) => {
         t.btn.addEventListener('click', () => {
@@ -362,6 +396,7 @@
       bindLab('lab1-form', 'lab1-result', '/api/records', 'lab1');
       bindLab('lab2-form', 'lab2-result', '/api/lab2/records', 'lab2');
       bindLab('lab3-form', 'lab3-result', '/api/lab3/records', 'lab3');
+      bindLab('lab4-form', 'lab4-result', '/api/lab4/records', 'lab4');
 
       refreshBtn.addEventListener('click', loadRecords);
       loadSettings();
