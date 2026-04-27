@@ -80,9 +80,18 @@ CMDI_SHELL=/bin/zsh docker compose up --build
 You can also put `CMDI_SHELL=/bin/bash` (or another value) in a local
 `.env` file and run `docker compose up --build`.
 
-> Note: the current app image is `node:20-alpine`, which reliably has
-> `/bin/sh`. `/bin/bash` or `/bin/zsh` may not exist in that container
-> unless you customize the image.
+This repo now builds a custom app image (`Dockerfile`) that installs
+`bash` and `zsh`, so `/bin/sh`, `/bin/bash`, and `/bin/zsh` all work
+for `CMDI_SHELL` in Docker.
+
+If you ever see `spawn /bin/bash ENOENT` (or zsh equivalent), the
+configured shell path does not exist in the running container/host.
+Rebuild the image with:
+
+```bash
+docker compose build --no-cache app
+docker compose up
+```
 
 Without Docker (requires a local PostgreSQL):
 
@@ -198,3 +207,4 @@ both filter passes.
 - `public/index.html` — Frontend with separate category tabs for SQL Injection labs and Command Injection labs, plus the verbose-errors toggle.
 - `db/init.sql` — Schema + a `secrets` table to make exfiltration demos meaningful.
 - `docker-compose.yml` — Postgres 16 + Node 20 dev stack.
+- `Dockerfile` — App image used by compose; installs `bash`/`zsh` for CMDI shell switching tests.

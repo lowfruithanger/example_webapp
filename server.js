@@ -273,6 +273,9 @@ app.post('/api/cmdi/lab1/ping', async (req, res) => {
 
     if (error) {
       response.error = error.message;
+      if (error.code === 'ENOENT' && cmdiShell) {
+        response.hint = `Configured shell "${cmdiShell}" was not found in the container/host`;
+      }
       return res.status(500).json(response);
     }
     res.json(response);
