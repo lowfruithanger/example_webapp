@@ -26,6 +26,7 @@ services:
       PGPASSWORD: postgres
       PGDATABASE: vulnerable_app
       PORT: "3000"
+      CMDI_SHELL: ${CMDI_SHELL:-/bin/sh}
     ports:
       - "3000:3000"
     volumes:

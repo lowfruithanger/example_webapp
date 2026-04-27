@@ -1,13 +1,15 @@
 // WARNING: This application is INTENTIONALLY VULNERABLE.
-// It is a teaching aid for error-based SQL injection. Do NOT deploy
+// It is a teaching aid for SQL/command injection labs. Do NOT deploy
 // it on a public network or use any of this code in production.
 
 const path = require('path');
 const express = require('express');
 const { Pool } = require('pg');
+const { exec } = require('child_process');
 
 const app = express();
 const port = process.env.PORT || 3000;
+const cmdiShell = process.env.CMDI_SHELL || undefined;
 
 const pool = new Pool({
   host: process.env.PGHOST || 'localhost',
@@ -238,6 +240,47 @@ app.post('/api/lab4/records', async (req, res) => {
   const { status, body } = await runSplitStackedInsert(filtered);
   const responseBody = verboseErrors ? { ...body, filteredValues: filtered } : body;
   res.status(status).json(responseBody);
+});
+
+// Command Injection Lab 1: simple command execution sink with a
+// literal-space filter.
+//
+// The endpoint accepts a `target` value used in:
+//   ping -c 1 <target>
+//
+// Before interpolation, only U+0020 spaces are stripped. Tabs/newlines,
+// shell metacharacters, substitution, comments, etc. remain untouched.
+// This intentionally demonstrates how naive space-stripping is not a
+// robust defense against command injection.
+app.post('/api/cmdi/lab1/ping', async (req, res) => {
+  const { target } = req.body || {};
+  if (typeof target !== 'string') {
+    return res.status(400).json({ error: 'target is required' });
+  }
+
+  const filteredTarget = target.replace(/ /g, '');
+  const cmd = `ping -c 1 ${filteredTarget}`;
+
+  exec(cmd, { timeout: 5000, maxBuffer: 1024 * 1024, shell: cmdiShell }, (error, stdout, stderr) => {
+    const response = {
+      ok: !error,
+      filteredTarget,
+      command: cmd,
+      shell: cmdiShell || 'system default',
+      stdout,
+      stderr,
+    };
+
+    if (error) {
+      response.error = error.message;
+      return res.status(500).json(response);
+    }
+    res.json(response);
+  });
+});
+
+app.get('/api/cmdi/settings', (_req, res) => {
+  res.json({ shell: cmdiShell || 'system default' });
 });
 
 app.get('/api/records', async (_req, res) => {
