@@ -84,6 +84,10 @@ This repo now builds a custom app image (`Dockerfile`) that installs
 `bash` and `zsh`, so `/bin/sh`, `/bin/bash`, and `/bin/zsh` all work
 for `CMDI_SHELL` in Docker.
 
+The server also normalizes shell paths if needed (for example, if
+`/bin/zsh` is requested but only `/usr/bin/zsh` exists, it will use the
+existing path automatically).
+
 If you ever see `spawn /bin/bash ENOENT` (or zsh equivalent), the
 configured shell path does not exist in the running container/host.
 Rebuild the image with:

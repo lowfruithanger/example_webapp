@@ -3,13 +3,28 @@
 // it on a public network or use any of this code in production.
 
 const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const { Pool } = require('pg');
 const { exec } = require('child_process');
 
 const app = express();
 const port = process.env.PORT || 3000;
-const cmdiShell = process.env.CMDI_SHELL || undefined;
+const requestedCmdiShell = process.env.CMDI_SHELL || undefined;
+
+function resolveShell(shellPath) {
+  if (!shellPath) return undefined;
+  if (fs.existsSync(shellPath)) return shellPath;
+
+  const name = path.basename(shellPath);
+  const candidates = [`/bin/${name}`, `/usr/bin/${name}`];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return shellPath;
+}
+
+const cmdiShell = resolveShell(requestedCmdiShell);
 
 const pool = new Pool({
   host: process.env.PGHOST || 'localhost',
@@ -267,6 +282,7 @@ app.post('/api/cmdi/lab1/ping', async (req, res) => {
       filteredTarget,
       command: cmd,
       shell: cmdiShell || 'system default',
+      requestedShell: requestedCmdiShell || 'system default',
       stdout,
       stderr,
     };
@@ -283,7 +299,10 @@ app.post('/api/cmdi/lab1/ping', async (req, res) => {
 });
 
 app.get('/api/cmdi/settings', (_req, res) => {
-  res.json({ shell: cmdiShell || 'system default' });
+  res.json({
+    shell: cmdiShell || 'system default',
+    requestedShell: requestedCmdiShell || 'system default',
+  });
 });
 
 app.get('/api/records', async (_req, res) => {
