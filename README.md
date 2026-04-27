@@ -7,7 +7,7 @@ An **intentionally vulnerable** demo web application that showcases
 
 ## What it does
 
-The app exposes four labs, all backed by the same vulnerable INSERT:
+The app exposes two clearly separated tracks:
 
 ```sql
 INSERT INTO records (username, email, comment)
@@ -15,8 +15,11 @@ VALUES ('<username>', '<email>', '<comment>')
 RETURNING ...;
 ```
 
-All three values are concatenated directly into the SQL string with no
-escaping or parameter binding, so every field is a SQL injection sink.
+### SQL Injection track
+
+All three SQL fields are concatenated directly into the query string
+with no escaping or parameter binding, so every field is a SQL
+injection sink.
 
 - **Lab 1 — Error-based** (`POST /api/records`). The endpoint returns
   only the *last* result set from `pool.query`, so injection has to
@@ -36,6 +39,14 @@ escaping or parameter binding, so every field is a SQL injection sink.
   features that don't need those keywords: `TABLE foo` (alias for
   `SELECT * FROM foo`) and top-level `VALUES (...)`.
 
+### Command Injection track
+
+- **Command Injection Lab 1 — Space filter** (`POST /api/cmdi/lab1/ping`).
+  A separate command-injection category. The server executes
+  `ping -c 1 <target>` via `child_process.exec` after stripping only
+  literal spaces from `target`. Non-space whitespace and shell
+  metacharacters still pass, demonstrating why this filter is weak.
+
 A "Verbose error responses" toggle at the top of the page controls
 whether DB errors come back as the full Postgres JSON
 (`error`/`detail`/`position`/`executedSql`) or just a generic 500 with
@@ -51,6 +62,41 @@ docker compose up --build
 
 Then open <http://localhost:3000>.
 
+`docker-compose.yml` already wires `CMDI_SHELL` into the app service
+with a default of `/bin/sh`:
+
+```yaml
+CMDI_SHELL: ${CMDI_SHELL:-/bin/sh}
+```
+
+So you can switch shell behavior directly at compose startup:
+
+```bash
+CMDI_SHELL=/bin/sh docker compose up --build
+CMDI_SHELL=/bin/bash docker compose up --build
+CMDI_SHELL=/bin/zsh docker compose up --build
+```
+
+You can also put `CMDI_SHELL=/bin/bash` (or another value) in a local
+`.env` file and run `docker compose up --build`.
+
+This repo now builds a custom app image (`Dockerfile`) that installs
+`bash` and `zsh`, so `/bin/sh`, `/bin/bash`, and `/bin/zsh` all work
+for `CMDI_SHELL` in Docker.
+
+The server also normalizes shell paths if needed (for example, if
+`/bin/zsh` is requested but only `/usr/bin/zsh` exists, it will use the
+existing path automatically).
+
+If you ever see `spawn /bin/bash ENOENT` (or zsh equivalent), the
+configured shell path does not exist in the running container/host.
+Rebuild the image with:
+
+```bash
+docker compose build --no-cache app
+docker compose up
+```
+
 Without Docker (requires a local PostgreSQL):
 
 ```bash
@@ -60,9 +106,26 @@ npm install
 PGUSER=postgres PGPASSWORD=postgres PGDATABASE=vulnerable_app npm start
 ```
 
-## Try the injection
+### Run with a specific command-execution shell (for Command Injection Lab)
 
-All three fields are vulnerable in both labs.
+The command-injection endpoint uses Node `exec`. You can force which
+shell it uses via `CMDI_SHELL`:
+
+```bash
+CMDI_SHELL=/bin/sh npm start
+CMDI_SHELL=/bin/bash npm start
+CMDI_SHELL=/bin/zsh npm start
+```
+
+If `CMDI_SHELL` is not set, Node's system default shell is used
+(`docker compose` defaults it to `/bin/sh` in this project).
+The active shell is shown in the Command Injection lab UI and via:
+
+```bash
+curl http://localhost:3000/api/cmdi/settings
+```
+
+## Try the injection
 
 ### Lab 1 — Error-based payloads
 - Break the syntax: value `'` → `unterminated quoted string ...`.
@@ -144,7 +207,8 @@ both filter passes.
 
 ## Files
 
-- `server.js` — Express backend. Vulnerable endpoints: `POST /api/records` (Lab 1, single result set), `POST /api/lab2/records` (Lab 2, statement split), `POST /api/lab3/records` (Lab 3, + space-stripped inputs), `POST /api/lab4/records` (Lab 4, + SELECT/UNION-stripped inputs). Settings: `GET/POST /api/settings`.
-- `public/index.html` — Tabbed frontend (Labs 1/2/3/4) with the verbose-errors toggle.
+- `server.js` — Express backend. SQL Injection endpoints: `POST /api/records` (Lab 1), `POST /api/lab2/records` (Lab 2), `POST /api/lab3/records` (Lab 3), `POST /api/lab4/records` (Lab 4). Command Injection endpoint: `POST /api/cmdi/lab1/ping`. Settings: `GET/POST /api/settings` (SQL labs) and `GET /api/cmdi/settings` (active command-injection shell).
+- `public/index.html` — Frontend with separate category tabs for SQL Injection labs and Command Injection labs, plus the verbose-errors toggle.
 - `db/init.sql` — Schema + a `secrets` table to make exfiltration demos meaningful.
 - `docker-compose.yml` — Postgres 16 + Node 20 dev stack.
+- `Dockerfile` — App image used by compose; installs `bash`/`zsh` for CMDI shell switching tests.
