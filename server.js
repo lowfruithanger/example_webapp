@@ -1,10 +1,11 @@
 // WARNING: This application is INTENTIONALLY VULNERABLE.
-// It is a teaching aid for error-based SQL injection. Do NOT deploy
+// It is a teaching aid for SQL/command injection labs. Do NOT deploy
 // it on a public network or use any of this code in production.
 
 const path = require('path');
 const express = require('express');
 const { Pool } = require('pg');
+const { exec } = require('child_process');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -238,6 +239,93 @@ app.post('/api/lab4/records', async (req, res) => {
   const { status, body } = await runSplitStackedInsert(filtered);
   const responseBody = verboseErrors ? { ...body, filteredValues: filtered } : body;
   res.status(status).json(responseBody);
+});
+
+function runCmdiWithShell({ target, shell, shellLabel }, res) {
+  const filteredTarget = target.replace(/ /g, '');
+  const cmd = `ping -c 1 ${filteredTarget}`;
+
+  exec(cmd, { timeout: 5000, maxBuffer: 1024 * 1024, shell }, (error, stdout, stderr) => {
+    const response = {
+      ok: !error,
+      filteredTarget,
+      command: cmd,
+      shell: shellLabel,
+      stdout,
+      stderr,
+    };
+    if (error) {
+      response.error = error.message;
+      return res.status(500).json(response);
+    }
+    res.json(response);
+  });
+}
+
+function runCmdiWithPython({ target }, res) {
+  const filteredTarget = target.replace(/ /g, '');
+  const pyCmd = `import os; os.system('ping -c 1 ${filteredTarget}')`;
+  const cmd = `python3 -c "${pyCmd}"`;
+
+  exec(cmd, { timeout: 5000, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+    const response = {
+      ok: !error,
+      filteredTarget,
+      command: cmd,
+      shell: 'python3',
+      stdout,
+      stderr,
+    };
+    if (error) {
+      response.error = error.message;
+      return res.status(500).json(response);
+    }
+    res.json(response);
+  });
+}
+
+function requireTarget(req, res) {
+  const { target } = req.body || {};
+  if (typeof target !== 'string') {
+    res.status(400).json({ error: 'target is required' });
+    return null;
+  }
+  return target;
+}
+
+app.post('/api/cmdi/lab1/ping', async (req, res) => {
+  const target = requireTarget(req, res);
+  if (target == null) return;
+  runCmdiWithShell({ target, shell: '/bin/bash', shellLabel: 'bash' }, res);
+});
+
+app.post('/api/cmdi/lab2/ping', async (req, res) => {
+  const target = requireTarget(req, res);
+  if (target == null) return;
+  runCmdiWithShell({ target, shell: '/bin/sh', shellLabel: 'sh' }, res);
+});
+
+app.post('/api/cmdi/lab3/ping', async (req, res) => {
+  const target = requireTarget(req, res);
+  if (target == null) return;
+  runCmdiWithPython({ target }, res);
+});
+
+app.post('/api/cmdi/lab4/ping', async (req, res) => {
+  const target = requireTarget(req, res);
+  if (target == null) return;
+  runCmdiWithShell({ target, shell: '/bin/zsh', shellLabel: 'zsh' }, res);
+});
+
+app.get('/api/cmdi/settings', (_req, res) => {
+  res.json({
+    labs: {
+      lab1: 'bash',
+      lab2: 'sh',
+      lab3: 'python3',
+      lab4: 'zsh',
+    },
+  });
 });
 
 app.get('/api/records', async (_req, res) => {

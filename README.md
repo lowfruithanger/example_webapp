@@ -7,7 +7,7 @@ An **intentionally vulnerable** demo web application that showcases
 
 ## What it does
 
-The app exposes four labs, all backed by the same vulnerable INSERT:
+The app exposes two clearly separated tracks:
 
 ```sql
 INSERT INTO records (username, email, comment)
@@ -15,8 +15,11 @@ VALUES ('<username>', '<email>', '<comment>')
 RETURNING ...;
 ```
 
-All three values are concatenated directly into the SQL string with no
-escaping or parameter binding, so every field is a SQL injection sink.
+### SQL Injection track
+
+All three SQL fields are concatenated directly into the query string
+with no escaping or parameter binding, so every field is a SQL
+injection sink.
 
 - **Lab 1 — Error-based** (`POST /api/records`). The endpoint returns
   only the *last* result set from `pool.query`, so injection has to
@@ -36,6 +39,21 @@ escaping or parameter binding, so every field is a SQL injection sink.
   features that don't need those keywords: `TABLE foo` (alias for
   `SELECT * FROM foo`) and top-level `VALUES (...)`.
 
+### Command Injection track
+
+- **Lab 1 — bash** (`POST /api/cmdi/lab1/ping`): executes
+  `ping -c 1 <target>` through `bash`.
+- **Lab 2 — sh** (`POST /api/cmdi/lab2/ping`): executes
+  `ping -c 1 <target>` through `sh`.
+- **Lab 3 — python** (`POST /api/cmdi/lab3/ping`): executes through
+  `python3` (`os.system(...)`).
+- **Lab 4 — zsh** (`POST /api/cmdi/lab4/ping`): executes
+  `ping -c 1 <target>` through `zsh`.
+
+All command-injection labs strip only literal spaces from `target`
+before execution, so metacharacters and non-space whitespace are still
+usable.
+
 A "Verbose error responses" toggle at the top of the page controls
 whether DB errors come back as the full Postgres JSON
 (`error`/`detail`/`position`/`executedSql`) or just a generic 500 with
@@ -51,6 +69,16 @@ docker compose up --build
 
 Then open <http://localhost:3000>.
 
+This repo now builds a custom app image (`Dockerfile`) that installs
+`bash` and `zsh`, so Command Injection Labs 1/2/4 can run their
+respective shells in Docker. If you ever see shell ENOENT errors, rebuild
+the image with:
+
+```bash
+docker compose build --no-cache app
+docker compose up
+```
+
 Without Docker (requires a local PostgreSQL):
 
 ```bash
@@ -60,9 +88,15 @@ npm install
 PGUSER=postgres PGPASSWORD=postgres PGDATABASE=vulnerable_app npm start
 ```
 
-## Try the injection
+### Command Injection lab metadata
 
-All three fields are vulnerable in both labs.
+Shell mapping is fixed by endpoint and visible via:
+
+```bash
+curl http://localhost:3000/api/cmdi/settings
+```
+
+## Try the injection
 
 ### Lab 1 — Error-based payloads
 - Break the syntax: value `'` → `unterminated quoted string ...`.
@@ -144,7 +178,8 @@ both filter passes.
 
 ## Files
 
-- `server.js` — Express backend. Vulnerable endpoints: `POST /api/records` (Lab 1, single result set), `POST /api/lab2/records` (Lab 2, statement split), `POST /api/lab3/records` (Lab 3, + space-stripped inputs), `POST /api/lab4/records` (Lab 4, + SELECT/UNION-stripped inputs). Settings: `GET/POST /api/settings`.
-- `public/index.html` — Tabbed frontend (Labs 1/2/3/4) with the verbose-errors toggle.
+- `server.js` — Express backend. SQL Injection endpoints: `POST /api/records` (Lab 1), `POST /api/lab2/records` (Lab 2), `POST /api/lab3/records` (Lab 3), `POST /api/lab4/records` (Lab 4). Command Injection endpoints: `POST /api/cmdi/lab1/ping` (bash), `/lab2/ping` (sh), `/lab3/ping` (python), `/lab4/ping` (zsh). Settings: `GET/POST /api/settings` (SQL labs) and `GET /api/cmdi/settings` (lab-shell mapping).
+- `public/index.html` — Frontend with separate category tabs for SQL Injection labs and Command Injection labs, plus the verbose-errors toggle.
 - `db/init.sql` — Schema + a `secrets` table to make exfiltration demos meaningful.
 - `docker-compose.yml` — Postgres 16 + Node 20 dev stack.
+- `Dockerfile` — App image used by compose; installs `bash`/`zsh` for CMDI shell switching tests.

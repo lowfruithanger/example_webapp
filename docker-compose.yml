@@ -16,7 +16,9 @@ services:
       retries: 20
 
   app:
-    image: node:20-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile
     working_dir: /app
     command: sh -c "npm install --no-audit --no-fund && npm start"
     environment:
