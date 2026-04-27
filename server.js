@@ -209,6 +209,37 @@ app.post('/api/lab3/records', async (req, res) => {
   res.status(status).json(responseBody);
 });
 
+// Lab 4: layered filter on top of Lab 3. In addition to stripping
+// literal spaces, the case-insensitive substrings `SELECT` and `UNION`
+// are stripped from each field before concatenation. The most common
+// SQL injection primitives stop working as-is, forcing the attacker to
+// reach for less-known PostgreSQL constructs:
+//
+//   - `TABLE foo`         -- shorthand for `SELECT * FROM foo`
+//   - `VALUES (expr,...)` -- top-level expression rows, no SELECT needed
+//
+// Statement-split / sanitized-INSERT-error / verbose-stacked-error
+// behaviour is inherited from Lab 2/3 via runSplitStackedInsert.
+app.post('/api/lab4/records', async (req, res) => {
+  const { username, email, comment } = req.body || {};
+
+  if (typeof username !== 'string' || typeof email !== 'string' || typeof comment !== 'string') {
+    return res.status(400).json({ error: 'username, email, and comment are required' });
+  }
+
+  const filter = (s) =>
+    s.replace(/ /g, '').replace(/select/gi, '').replace(/union/gi, '');
+  const filtered = {
+    username: filter(username),
+    email: filter(email),
+    comment: filter(comment),
+  };
+
+  const { status, body } = await runSplitStackedInsert(filtered);
+  const responseBody = verboseErrors ? { ...body, filteredValues: filtered } : body;
+  res.status(status).json(responseBody);
+});
+
 app.get('/api/records', async (_req, res) => {
   try {
     const result = await pool.query(
