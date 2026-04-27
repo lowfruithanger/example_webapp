@@ -41,11 +41,18 @@ injection sink.
 
 ### Command Injection track
 
-- **Command Injection Lab 1 — Space filter** (`POST /api/cmdi/lab1/ping`).
-  A separate command-injection category. The server executes
-  `ping -c 1 <target>` via `child_process.exec` after stripping only
-  literal spaces from `target`. Non-space whitespace and shell
-  metacharacters still pass, demonstrating why this filter is weak.
+- **Lab 1 — bash** (`POST /api/cmdi/lab1/ping`): executes
+  `ping -c 1 <target>` through `bash`.
+- **Lab 2 — sh** (`POST /api/cmdi/lab2/ping`): executes
+  `ping -c 1 <target>` through `sh`.
+- **Lab 3 — python** (`POST /api/cmdi/lab3/ping`): executes through
+  `python3` (`os.system(...)`).
+- **Lab 4 — zsh** (`POST /api/cmdi/lab4/ping`): executes
+  `ping -c 1 <target>` through `zsh`.
+
+All command-injection labs strip only literal spaces from `target`
+before execution, so metacharacters and non-space whitespace are still
+usable.
 
 A "Verbose error responses" toggle at the top of the page controls
 whether DB errors come back as the full Postgres JSON
@@ -62,35 +69,10 @@ docker compose up --build
 
 Then open <http://localhost:3000>.
 
-`docker-compose.yml` already wires `CMDI_SHELL` into the app service
-with a default of `/bin/sh`:
-
-```yaml
-CMDI_SHELL: ${CMDI_SHELL:-/bin/sh}
-```
-
-So you can switch shell behavior directly at compose startup:
-
-```bash
-CMDI_SHELL=/bin/sh docker compose up --build
-CMDI_SHELL=/bin/bash docker compose up --build
-CMDI_SHELL=/bin/zsh docker compose up --build
-```
-
-You can also put `CMDI_SHELL=/bin/bash` (or another value) in a local
-`.env` file and run `docker compose up --build`.
-
 This repo now builds a custom app image (`Dockerfile`) that installs
-`bash` and `zsh`, so `/bin/sh`, `/bin/bash`, and `/bin/zsh` all work
-for `CMDI_SHELL` in Docker.
-
-The server also normalizes shell paths if needed (for example, if
-`/bin/zsh` is requested but only `/usr/bin/zsh` exists, it will use the
-existing path automatically).
-
-If you ever see `spawn /bin/bash ENOENT` (or zsh equivalent), the
-configured shell path does not exist in the running container/host.
-Rebuild the image with:
+`bash` and `zsh`, so Command Injection Labs 1/2/4 can run their
+respective shells in Docker. If you ever see shell ENOENT errors, rebuild
+the image with:
 
 ```bash
 docker compose build --no-cache app
@@ -106,20 +88,9 @@ npm install
 PGUSER=postgres PGPASSWORD=postgres PGDATABASE=vulnerable_app npm start
 ```
 
-### Run with a specific command-execution shell (for Command Injection Lab)
+### Command Injection lab metadata
 
-The command-injection endpoint uses Node `exec`. You can force which
-shell it uses via `CMDI_SHELL`:
-
-```bash
-CMDI_SHELL=/bin/sh npm start
-CMDI_SHELL=/bin/bash npm start
-CMDI_SHELL=/bin/zsh npm start
-```
-
-If `CMDI_SHELL` is not set, Node's system default shell is used
-(`docker compose` defaults it to `/bin/sh` in this project).
-The active shell is shown in the Command Injection lab UI and via:
+Shell mapping is fixed by endpoint and visible via:
 
 ```bash
 curl http://localhost:3000/api/cmdi/settings
@@ -207,7 +178,7 @@ both filter passes.
 
 ## Files
 
-- `server.js` — Express backend. SQL Injection endpoints: `POST /api/records` (Lab 1), `POST /api/lab2/records` (Lab 2), `POST /api/lab3/records` (Lab 3), `POST /api/lab4/records` (Lab 4). Command Injection endpoint: `POST /api/cmdi/lab1/ping`. Settings: `GET/POST /api/settings` (SQL labs) and `GET /api/cmdi/settings` (active command-injection shell).
+- `server.js` — Express backend. SQL Injection endpoints: `POST /api/records` (Lab 1), `POST /api/lab2/records` (Lab 2), `POST /api/lab3/records` (Lab 3), `POST /api/lab4/records` (Lab 4). Command Injection endpoints: `POST /api/cmdi/lab1/ping` (bash), `/lab2/ping` (sh), `/lab3/ping` (python), `/lab4/ping` (zsh). Settings: `GET/POST /api/settings` (SQL labs) and `GET /api/cmdi/settings` (lab-shell mapping).
 - `public/index.html` — Frontend with separate category tabs for SQL Injection labs and Command Injection labs, plus the verbose-errors toggle.
 - `db/init.sql` — Schema + a `secrets` table to make exfiltration demos meaningful.
 - `docker-compose.yml` — Postgres 16 + Node 20 dev stack.

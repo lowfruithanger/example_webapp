@@ -300,21 +300,18 @@
       <section id="category-cmdi" role="tabpanel" aria-labelledby="category-tab-cmdi" hidden>
         <h2 class="category-group-title">Command Injection Track</h2>
         <div class="tabs" role="tablist">
-          <button class="tab" type="button" role="tab" id="tab-5" aria-selected="true" aria-controls="cmdi-lab-1">Lab 1 · Space filter</button>
+          <button class="tab" type="button" role="tab" id="tab-5" aria-selected="true" aria-controls="cmdi-lab-1">Lab 1 · bash</button>
+          <button class="tab" type="button" role="tab" id="tab-6" aria-selected="false" aria-controls="cmdi-lab-2">Lab 2 · sh</button>
+          <button class="tab" type="button" role="tab" id="tab-7" aria-selected="false" aria-controls="cmdi-lab-3">Lab 3 · python</button>
+          <button class="tab" type="button" role="tab" id="tab-8" aria-selected="false" aria-controls="cmdi-lab-4">Lab 4 · zsh</button>
         </div>
 
       <section id="cmdi-lab-1" role="tabpanel" aria-labelledby="tab-5">
         <div class="lab-intro">
-          Endpoint <code>POST /api/cmdi/lab1/ping</code>. The backend builds and runs
-          <code>ping -c 1 &lt;target&gt;</code> with <code>child_process.exec</code>.
-          It strips only literal spaces from <code>target</code> before interpolation.
-          Shell metacharacters and non-space whitespace can still be abused for
-          command injection in this intentionally vulnerable lab.
-          <div style="margin-top:0.5rem;">
-            Active shell: <code id="cmdi-shell">loading…</code>
-          </div>
+          Endpoint <code>POST /api/cmdi/lab1/ping</code>. Executes
+          <code>ping -c 1 &lt;target&gt;</code> using <code>bash</code>. Literal spaces
+          are stripped from <code>target</code> first.
         </div>
-
         <form id="cmdi-lab1-form">
           <div class="field">
             <label for="cmdi-lab1-target">Target host/IP (spaces stripped, then executed in shell)</label>
@@ -323,6 +320,52 @@
           <button type="submit">Run ping</button>
         </form>
         <div id="cmdi-lab1-result" class="result" hidden></div>
+      </section>
+
+      <section id="cmdi-lab-2" role="tabpanel" aria-labelledby="tab-6" hidden>
+        <div class="lab-intro">
+          Endpoint <code>POST /api/cmdi/lab2/ping</code>. Same payload shape as Lab 1,
+          but execution is forced through <code>sh</code>.
+        </div>
+        <form id="cmdi-lab2-form">
+          <div class="field">
+            <label for="cmdi-lab2-target">Target host/IP (spaces stripped, then executed in shell)</label>
+            <input id="cmdi-lab2-target" required autocomplete="off" />
+          </div>
+          <button type="submit">Run ping</button>
+        </form>
+        <div id="cmdi-lab2-result" class="result" hidden></div>
+      </section>
+
+      <section id="cmdi-lab-3" role="tabpanel" aria-labelledby="tab-7" hidden>
+        <div class="lab-intro">
+          Endpoint <code>POST /api/cmdi/lab3/ping</code>. Runs via
+          <code>python3</code> (using <code>os.system</code>) so you can compare
+          behavior against shell-based labs.
+        </div>
+        <form id="cmdi-lab3-form">
+          <div class="field">
+            <label for="cmdi-lab3-target">Target host/IP (spaces stripped, then executed)</label>
+            <input id="cmdi-lab3-target" required autocomplete="off" />
+          </div>
+          <button type="submit">Run ping</button>
+        </form>
+        <div id="cmdi-lab3-result" class="result" hidden></div>
+      </section>
+
+      <section id="cmdi-lab-4" role="tabpanel" aria-labelledby="tab-8" hidden>
+        <div class="lab-intro">
+          Endpoint <code>POST /api/cmdi/lab4/ping</code>. Same payload shape as Lab 1,
+          but execution is forced through <code>zsh</code>.
+        </div>
+        <form id="cmdi-lab4-form">
+          <div class="field">
+            <label for="cmdi-lab4-target">Target host/IP (spaces stripped, then executed in shell)</label>
+            <input id="cmdi-lab4-target" required autocomplete="off" />
+          </div>
+          <button type="submit">Run ping</button>
+        </form>
+        <div id="cmdi-lab4-result" class="result" hidden></div>
       </section>
       </section>
 
@@ -375,6 +418,22 @@
       sqlTabs.forEach((t, i) => {
         t.btn.addEventListener('click', () => {
           sqlTabs.forEach((other, j) => {
+            other.btn.setAttribute('aria-selected', String(i === j));
+            other.panel.hidden = i !== j;
+          });
+        });
+      });
+
+      // Command injection lab tab switching
+      const cmdiTabs = [
+        { btn: document.getElementById('tab-5'), panel: document.getElementById('cmdi-lab-1') },
+        { btn: document.getElementById('tab-6'), panel: document.getElementById('cmdi-lab-2') },
+        { btn: document.getElementById('tab-7'), panel: document.getElementById('cmdi-lab-3') },
+        { btn: document.getElementById('tab-8'), panel: document.getElementById('cmdi-lab-4') },
+      ];
+      cmdiTabs.forEach((t, i) => {
+        t.btn.addEventListener('click', () => {
+          cmdiTabs.forEach((other, j) => {
             other.btn.setAttribute('aria-selected', String(i === j));
             other.panel.hidden = i !== j;
           });
@@ -477,23 +536,28 @@
       bindLab('lab2-form', 'lab2-result', '/api/lab2/records', 'lab2');
       bindLab('lab3-form', 'lab3-result', '/api/lab3/records', 'lab3');
       bindLab('lab4-form', 'lab4-result', '/api/lab4/records', 'lab4');
-      document.getElementById('cmdi-lab1-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const body = {
-          target: document.getElementById('cmdi-lab1-target').value,
-        };
-        try {
-          const res = await fetch('/api/cmdi/lab1/ping', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          });
-          const data = await res.json();
-          showResult('cmdi-lab1-result', data, res.ok && data.ok);
-        } catch (err) {
-          showResult('cmdi-lab1-result', { error: String(err) }, false);
-        }
-      });
+      function bindCmdiLab(formId, resultId, endpoint, inputId) {
+        document.getElementById(formId).addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const body = { target: document.getElementById(inputId).value };
+          try {
+            const res = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            });
+            const data = await res.json();
+            showResult(resultId, data, res.ok && data.ok);
+          } catch (err) {
+            showResult(resultId, { error: String(err) }, false);
+          }
+        });
+      }
+
+      bindCmdiLab('cmdi-lab1-form', 'cmdi-lab1-result', '/api/cmdi/lab1/ping', 'cmdi-lab1-target');
+      bindCmdiLab('cmdi-lab2-form', 'cmdi-lab2-result', '/api/cmdi/lab2/ping', 'cmdi-lab2-target');
+      bindCmdiLab('cmdi-lab3-form', 'cmdi-lab3-result', '/api/cmdi/lab3/ping', 'cmdi-lab3-target');
+      bindCmdiLab('cmdi-lab4-form', 'cmdi-lab4-result', '/api/cmdi/lab4/ping', 'cmdi-lab4-target');
 
       refreshBtn.addEventListener('click', loadRecords);
       loadSettings();

@@ -257,51 +257,90 @@ app.post('/api/lab4/records', async (req, res) => {
   res.status(status).json(responseBody);
 });
 
-// Command Injection Lab 1: simple command execution sink with a
-// literal-space filter.
-//
-// The endpoint accepts a `target` value used in:
-//   ping -c 1 <target>
-//
-// Before interpolation, only U+0020 spaces are stripped. Tabs/newlines,
-// shell metacharacters, substitution, comments, etc. remain untouched.
-// This intentionally demonstrates how naive space-stripping is not a
-// robust defense against command injection.
-app.post('/api/cmdi/lab1/ping', async (req, res) => {
-  const { target } = req.body || {};
-  if (typeof target !== 'string') {
-    return res.status(400).json({ error: 'target is required' });
-  }
-
+function runCmdiWithShell({ target, shell, shellLabel }, res) {
   const filteredTarget = target.replace(/ /g, '');
   const cmd = `ping -c 1 ${filteredTarget}`;
 
-  exec(cmd, { timeout: 5000, maxBuffer: 1024 * 1024, shell: cmdiShell }, (error, stdout, stderr) => {
+  exec(cmd, { timeout: 5000, maxBuffer: 1024 * 1024, shell }, (error, stdout, stderr) => {
     const response = {
       ok: !error,
       filteredTarget,
       command: cmd,
-      shell: cmdiShell || 'system default',
-      requestedShell: requestedCmdiShell || 'system default',
+      shell: shellLabel,
       stdout,
       stderr,
     };
-
     if (error) {
       response.error = error.message;
-      if (error.code === 'ENOENT' && cmdiShell) {
-        response.hint = `Configured shell "${cmdiShell}" was not found in the container/host`;
-      }
       return res.status(500).json(response);
     }
     res.json(response);
   });
+}
+
+function runCmdiWithPython({ target }, res) {
+  const filteredTarget = target.replace(/ /g, '');
+  const pyCmd = `import os; os.system('ping -c 1 ${filteredTarget}')`;
+  const cmd = `python3 -c "${pyCmd}"`;
+
+  exec(cmd, { timeout: 5000, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+    const response = {
+      ok: !error,
+      filteredTarget,
+      command: cmd,
+      shell: 'python3',
+      stdout,
+      stderr,
+    };
+    if (error) {
+      response.error = error.message;
+      return res.status(500).json(response);
+    }
+    res.json(response);
+  });
+}
+
+function requireTarget(req, res) {
+  const { target } = req.body || {};
+  if (typeof target !== 'string') {
+    res.status(400).json({ error: 'target is required' });
+    return null;
+  }
+  return target;
+}
+
+app.post('/api/cmdi/lab1/ping', async (req, res) => {
+  const target = requireTarget(req, res);
+  if (target == null) return;
+  runCmdiWithShell({ target, shell: '/bin/bash', shellLabel: 'bash' }, res);
+});
+
+app.post('/api/cmdi/lab2/ping', async (req, res) => {
+  const target = requireTarget(req, res);
+  if (target == null) return;
+  runCmdiWithShell({ target, shell: '/bin/sh', shellLabel: 'sh' }, res);
+});
+
+app.post('/api/cmdi/lab3/ping', async (req, res) => {
+  const target = requireTarget(req, res);
+  if (target == null) return;
+  runCmdiWithPython({ target }, res);
+});
+
+app.post('/api/cmdi/lab4/ping', async (req, res) => {
+  const target = requireTarget(req, res);
+  if (target == null) return;
+  runCmdiWithShell({ target, shell: '/bin/zsh', shellLabel: 'zsh' }, res);
 });
 
 app.get('/api/cmdi/settings', (_req, res) => {
   res.json({
-    shell: cmdiShell || 'system default',
-    requestedShell: requestedCmdiShell || 'system default',
+    labs: {
+      lab1: 'bash',
+      lab2: 'sh',
+      lab3: 'python3',
+      lab4: 'zsh',
+    },
   });
 });
 
