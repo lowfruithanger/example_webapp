@@ -36,3 +36,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  web:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.vuln.lab.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      app:
+        condition: service_started
+

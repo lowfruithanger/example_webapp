@@ -69,6 +69,28 @@ docker compose up --build
 
 Then open <http://localhost:3000>.
 
+### Internal domain (vuln.lab)
+
+This repo includes an Nginx reverse proxy service (`web`) that maps port `80`
+to the Node app and serves the site on `vuln.lab`.
+
+1. Add a host entry on your machine:
+
+   ```bash
+   echo "127.0.0.1 vuln.lab" | sudo tee -a /etc/hosts
+   ```
+
+2. Start the stack:
+
+   ```bash
+   docker compose up --build
+   ```
+
+3. Browse to <http://vuln.lab>.
+
+If you are running Docker on a remote VM, replace `127.0.0.1` with that VM's
+private IP in your local hosts file.
+
 This repo now builds a custom app image (`Dockerfile`) that installs
 `bash` and `zsh`, so Command Injection Labs 1/2/4 can run their
 respective shells in Docker. If you ever see shell ENOENT errors, rebuild
@@ -181,5 +203,6 @@ both filter passes.
 - `server.js` — Express backend. SQL Injection endpoints: `POST /api/records` (Lab 1), `POST /api/lab2/records` (Lab 2), `POST /api/lab3/records` (Lab 3), `POST /api/lab4/records` (Lab 4). Command Injection endpoints: `POST /api/cmdi/lab1/ping` (bash), `/lab2/ping` (sh), `/lab3/ping` (python), `/lab4/ping` (zsh). Settings: `GET/POST /api/settings` (SQL labs) and `GET /api/cmdi/settings` (lab-shell mapping).
 - `public/index.html` — Frontend with separate category tabs for SQL Injection labs and Command Injection labs, plus the verbose-errors toggle.
 - `db/init.sql` — Schema + a `secrets` table to make exfiltration demos meaningful.
-- `docker-compose.yml` — Postgres 16 + Node 20 dev stack.
+- `docker-compose.yml` — Postgres 16 + Node 20 dev stack, plus an Nginx reverse proxy bound to port 80 for `vuln.lab`.
 - `Dockerfile` — App image used by compose; installs `bash`/`zsh` for CMDI shell switching tests.
+- `nginx.vuln.lab.conf` — Nginx virtual host config that routes `vuln.lab` to the app container.
