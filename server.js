@@ -10,6 +10,7 @@ const { exec } = require('child_process');
 
 const app = express();
 const port = process.env.PORT || 3000;
+const host = process.env.HOST || '0.0.0.0';
 const requestedCmdiShell = process.env.CMDI_SHELL || undefined;
 
 function resolveShell(shellPath) {
@@ -355,6 +356,6 @@ app.get('/api/records', async (_req, res) => {
   }
 });
 
-app.listen(port, () => {
-  console.log(`Vulnerable demo app listening on http://localhost:${port}`);
+app.listen(port, host, () => {
+  console.log(`Vulnerable demo app listening on http://${host}:${port}`);
 });
